@@ -33,6 +33,18 @@ export const SearchPage: React.FC<SearchPageProps> = ({
 }) => {
   const [query, setQuery] = useState('Taiwan');
   const [activeTab, setActiveTab] = useState<'all' | 'companies' | 'events' | 'countries' | 'reports'>('all');
+  const [reports, setReports] = useState(INITIAL_REPORTS);
+
+  React.useEffect(() => {
+    fetch('/api/reports')
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.reports) && d.reports.length > 0) {
+          setReports(d.reports);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const matchedCompanies = companies.filter(
     (c) =>
@@ -54,7 +66,7 @@ export const SearchPage: React.FC<SearchPageProps> = ({
       c.region.toLowerCase().includes(query.toLowerCase())
   );
 
-  const matchedReports = INITIAL_REPORTS.filter(
+  const matchedReports = reports.filter(
     (r) =>
       r.title.toLowerCase().includes(query.toLowerCase()) ||
       r.summary.toLowerCase().includes(query.toLowerCase())

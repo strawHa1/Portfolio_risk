@@ -207,6 +207,8 @@ export interface ReportItem {
   author: string;
   tags: string[];
   sections: { heading: string; body: string }[];
+  triggerSource?: string;
+  headlineReferences?: string[];
 }
 
 export interface ChatMessage {

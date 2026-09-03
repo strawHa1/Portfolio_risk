@@ -40,6 +40,13 @@ import {
   startAlertEngine
 } from './alertEngineService.js';
 import { getDashboardIntelligence } from './dashboardIntelligenceService.js';
+import {
+  getReportsArchive,
+  getReportById,
+  generateIntelligenceReport,
+  initReportEngine,
+  startReportEngineCron
+} from './reportEngineService.js';
 import { getGeminiApiKey, getGeminiKeySource, loadProjectEnv, logGeminiKeyStatus, maskGeminiApiKey, persistGeminiKeyToEnv, sanitizeEnvValue } from './envConfig.js';
 import {
   createGeminiClient,
@@ -265,79 +272,48 @@ app.get('/api/countries/risk', async (req, res) => {
 });
 
 /**
- * AI Report Generation Endpoint
+ * AI Reports Endpoints
  */
-app.post('/api/reports/generate', async (req, res) => {
-  const { topic, focusArea } = req.body;
-  const ai = getGenAI();
-
-  if (!ai) {
-    return res.json({
-      id: `rep-${Date.now()}`,
-      title: `${topic || 'Global Market Risk'} Intelligence Brief`,
-      summary: `Automated intelligence evaluation covering ${focusArea || 'geopolitical and trade risks'}.`,
-      severityTag: 'high',
-      createdAt: new Date().toISOString().split('T')[0],
-      author: 'Black Swan AI Desk',
-      tags: ['Geopolitics', 'Markets', 'Supply Chain'],
-      sections: [
-        { heading: 'Executive Brief', body: 'Heightened volatility across global asset classes requires defensive capital positioning.' },
-        { heading: 'Transmission Channels', body: 'Trade friction and logistics bottlenecks remain primary vectors for corporate margin compression.' }
-      ]
-    });
-  }
-
+app.get('/api/reports', (req, res) => {
   try {
-    const prompt = `Generate a high-level financial risk intelligence report on the topic: "${topic || 'Geopolitical Freight & Tech Risk'}". Focus area: "${focusArea || 'Global Supply Chains'}".
-Return JSON with this schema:
-{
-  "title": string,
-  "summary": string,
-  "severityTag": "critical" | "high" | "medium" | "low",
-  "tags": [string],
-  "sections": [
-    { "heading": "Executive Brief", "body": "paragraph text" },
-    { "heading": "Key Risk Drivers", "body": "paragraph text" },
-    { "heading": "Market & Sector Exposure", "body": "paragraph text" },
-    { "heading": "Recommended Risk Mitigation", "body": "paragraph text" }
-  ]
-}`;
+    res.set('Cache-Control', 'no-store');
+    const reports = getReportsArchive();
+    res.json({ reports, count: reports.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to fetch reports archive' });
+  }
+});
 
-    let reportText = '';
-    let lastError: unknown = null;
-    for (const model of GEMINI_CHAT_MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            temperature: 0.3
-          }
-        });
-        reportText = (response.text || '').trim();
-        if (reportText) break;
-        throw new Error('Empty report response');
-      } catch (err) {
-        lastError = err;
-        logRawGeminiError(`report model ${model} failed`, err);
-      }
+app.get('/api/reports/:id', (req, res) => {
+  try {
+    const report = getReportById(req.params.id);
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
     }
-    if (!reportText) throw lastError || new Error('Failed to generate report');
+    res.json(report);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to fetch report' });
+  }
+});
 
-    const parsed = JSON.parse(reportText);
-    return res.json({
-      id: `rep-${Date.now()}`,
-      title: parsed.title || `${topic} Intelligence Brief`,
-      summary: parsed.summary || 'AI generated market risk brief.',
-      severityTag: parsed.severityTag || 'high',
-      createdAt: new Date().toISOString().split('T')[0],
-      author: 'Black Swan AI Intelligence Engine',
-      tags: parsed.tags || ['Risk Analysis'],
-      sections: parsed.sections || []
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to generate report' });
+app.post('/api/reports/generate', async (req, res) => {
+  try {
+    const { topic, focusArea, preferredSeverity } = req.body || {};
+    const report = await generateIntelligenceReport({ topic, focusArea, preferredSeverity });
+    res.json(report);
+  } catch (err: any) {
+    console.error('[Reports] /api/reports/generate error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to generate report' });
+  }
+});
+
+app.post('/api/reports/auto-generate', async (req, res) => {
+  try {
+    const report = await generateIntelligenceReport();
+    res.json(report);
+  } catch (err: any) {
+    console.error('[Reports] /api/reports/auto-generate error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to auto-generate report' });
   }
 });
 
@@ -812,6 +788,8 @@ async function startServer() {
     initDashboardTrendService();
     startDashboardTrendCron();
     startAlertEngine();
+    initReportEngine().catch((err) => console.error('[Reports] Init failed:', err));
+    startReportEngineCron();
   });
 
   server.on('error', (err: NodeJS.ErrnoException) => {
