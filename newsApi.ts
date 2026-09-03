@@ -28,9 +28,11 @@ const INDIA_RSS_FEEDS = [
 ];
 
 const WORLD_RSS_FEEDS = [
-  { url: 'https://feeds.reuters.com/reuters/businessNews', label: 'Reuters' },
+  { url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664', label: 'CNBC Markets' },
+  { url: 'https://finance.yahoo.com/news/rssindex', label: 'Yahoo Finance' },
   { url: 'https://feeds.bbci.co.uk/news/business/rss.xml', label: 'BBC Business' },
-  { url: 'https://feeds.reuters.com/reuters/topNews', label: 'Reuters Top' }
+  { url: 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147', label: 'CNBC Tech' },
+  { url: 'https://news.google.com/rss/headlines/section/topic/BUSINESS?hl=en-US&gl=US&ceid=US:en', label: 'Google News Business' }
 ];
 
 const NEGATIVE_KEYWORDS = [
@@ -381,7 +383,14 @@ export async function fetchCompanyNews(symbol: string, limit = 10): Promise<{ ar
   }
 
   if (articles.length === 0) {
-    const { articles: headlines } = await fetchHeadlines('all', 30);
+    articles = await fetchCompanyRss(cleanSymbol, undefined, limit);
+    if (articles.length > 0) {
+      source = 'rss-company';
+    }
+  }
+
+  if (articles.length === 0) {
+    const { articles: headlines } = await fetchHeadlines('all', 40);
     const symbolLower = cleanSymbol.toLowerCase();
     const companyNames: Record<string, string[]> = {
       NVDA: ['nvidia'],
@@ -402,13 +411,74 @@ export async function fetchCompanyNews(symbol: string, limit = 10): Promise<{ ar
     };
     const keywords = [symbolLower, ...(companyNames[cleanSymbol] || [])];
     articles = headlines
-      .filter((a) => keywords.some((k) => `${a.title} ${a.description}`.toLowerCase().includes(k)))
+      .filter((a) => {
+        const text = `${a.title} ${a.description}`.toLowerCase();
+        // Guard against generic words (e.g. apple fruit)
+        if (cleanSymbol === 'AAPL') {
+          return /\b(apple|aapl|iphone|ipad|macbook|tim cook|app store)\b/i.test(text) &&
+            !/\b(cider|orchard|harvest|crop|fruit|grocer)\b/i.test(text);
+        }
+        return keywords.some((k) => text.includes(k));
+      })
       .slice(0, limit);
     source = 'keyword-match';
   }
 
   cache[cacheKey] = { data: articles, timestamp: Date.now(), source };
   return { articles, source };
+}
+
+/**
+ * Fetch targeted news for a company from Yahoo Finance and Google News RSS feeds.
+ */
+export async function fetchCompanyRss(symbol: string, companyName?: string, limit = 5): Promise<NewsArticle[]> {
+  const cleanSymbol = symbol.trim().toUpperCase();
+  const articles: NewsArticle[] = [];
+
+  // Try Yahoo Finance ticker RSS first
+  try {
+    const yahooUrl = `https://finance.yahoo.com/rss/headline?s=${encodeURIComponent(cleanSymbol)}`;
+    const yahooRes = await fetch(yahooUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BlackSwan/1.0)' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (yahooRes.ok) {
+      const xml = await yahooRes.text();
+      const parsed = parseRssItems(xml, 'world', 'Yahoo Finance');
+      if (parsed.length > 0) {
+        articles.push(...parsed);
+      }
+    }
+  } catch {
+    /* try google news next */
+  }
+
+  // If Yahoo didn't yield enough, query Google News RSS for this ticker
+  if (articles.length < limit) {
+    try {
+      const query = companyName
+        ? `${cleanSymbol} OR "${companyName}" stock`
+        : `${cleanSymbol} stock`;
+      const gnewsUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+      const gnewsRes = await fetch(gnewsUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BlackSwan/1.0)' },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (gnewsRes.ok) {
+        const xml = await gnewsRes.text();
+        const parsed = parseRssItems(xml, 'world', 'Google News');
+        for (const item of parsed) {
+          if (!articles.some((a) => a.id === item.id || a.title.toLowerCase() === item.title.toLowerCase())) {
+            articles.push(item);
+          }
+        }
+      }
+    } catch {
+      /* continue */
+    }
+  }
+
+  return articles.slice(0, limit);
 }
 
 export type LiveGlobalEvent = {

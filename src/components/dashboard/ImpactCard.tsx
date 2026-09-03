@@ -117,7 +117,15 @@ export const ImpactCard: React.FC<ImpactCardProps> = ({ record, onClick }) => {
             {record.actualChangePct.toFixed(1)}%
           </span>
         </div>
-        {aligned && <span className="text-emerald-500/80 text-[9px]">✓ aligned</span>}
+        {aligned ? (
+          <span className="text-emerald-400 font-semibold text-[9px] flex items-center gap-1 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+            ✓ Aligned
+          </span>
+        ) : (
+          <span className="text-amber-400/90 font-semibold text-[9px] flex items-center gap-1 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+            ⚠ Not aligned
+          </span>
+        )}
       </div>
 
       <div className="mt-2 flex items-center justify-between text-[10px] text-slate-500">

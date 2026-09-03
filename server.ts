@@ -711,9 +711,23 @@ app.get('/api/news/company', async (req, res) => {
 /**
  * Stock Impact — news-to-price correlation pipeline
  */
-app.get('/api/impact', (req, res) => {
-  res.set('Cache-Control', 'no-store');
-  res.json(getImpactState());
+app.get('/api/impact', async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    if (req.query.refresh === 'true') {
+      const refreshed = await refreshImpactData(true);
+      return res.json(refreshed);
+    }
+    const current = getImpactState();
+    // If cache is empty or older than 10 minutes, trigger background ingestion
+    const age = current.lastUpdated ? Date.now() - new Date(current.lastUpdated).getTime() : Infinity;
+    if ((age > 10 * 60 * 1000 || current.impactedCompanies.length === 0) && !current.isLoading) {
+      refreshImpactData(true).catch((err) => console.error('[Impact] Auto background refresh failed:', err));
+    }
+    res.json(current);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'Failed to load impact state' });
+  }
 });
 
 app.get('/api/alerts', async (req, res) => {
@@ -729,9 +743,14 @@ app.get('/api/alerts', async (req, res) => {
 
 app.post('/api/impact/refresh', async (req, res) => {
   try {
+    const force = req.body?.force === true || req.query.force === 'true';
+    if (force) {
+      const refreshed = await refreshImpactData(true);
+      return res.json(refreshed);
+    }
     const result = await manualRefreshImpact();
     if (!result.ok) {
-      return res.status(429).json({ error: result.message, ...result.state });
+      return res.status(200).json({ notice: result.message, ...result.state });
     }
     res.json(result.state);
   } catch (e: any) {

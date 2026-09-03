@@ -14,7 +14,11 @@ async function fetchImpactState(): Promise<ImpactStoreState> {
 }
 
 async function triggerImpactRefresh(): Promise<ImpactStoreState> {
-  const res = await fetch('/api/impact/refresh', { method: 'POST' });
+  const res = await fetch('/api/impact/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ force: true })
+  });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Refresh failed');
   return data;
@@ -31,6 +35,7 @@ export function useImpactData() {
   const [state, setState] = useState<ImpactStoreState>({
     impactedCompanies: [],
     lastUpdated: null,
+    lastPriceUpdated: null,
     isLoading: true,
     error: null,
     source: 'none'
@@ -39,18 +44,35 @@ export function useImpactData() {
   const [filterSector, setFilterSector] = useState<ImpactFilterSector>('all');
   const [filterRegion, setFilterRegion] = useState<ImpactFilterRegion>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [currentTime, setCurrentTime] = useState(Date.now());
   const isMounted = useRef(true);
   const refreshingRef = useRef(false);
+
+  // Tick current time every 10 seconds to keep "Updated X ago" accurate without lag
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (isMounted.current) setCurrentTime(Date.now());
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const data = await fetchImpactState();
       if (isMounted.current) {
-        setState(data);
+        setState((prev) => ({
+          ...data,
+          isLoading: false,
+          error: data.error || null
+        }));
       }
     } catch (e: any) {
       if (isMounted.current) {
-        setState((prev) => ({ ...prev, isLoading: false, error: e?.message || 'Failed to load impact data' }));
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: e?.message || 'Failed to load impact data'
+        }));
       }
     }
   }, []);
@@ -61,10 +83,19 @@ export function useImpactData() {
     setRefreshing(true);
     try {
       const data = await triggerImpactRefresh();
-      if (isMounted.current) setState(data);
+      if (isMounted.current) {
+        setState((prev) => ({
+          ...data,
+          isLoading: false,
+          error: null
+        }));
+      }
     } catch (e: any) {
       if (isMounted.current) {
-        setState((prev) => ({ ...prev, error: e?.message || 'Refresh failed' }));
+        setState((prev) => ({
+          ...prev,
+          error: e?.message || 'Refresh failed'
+        }));
       }
     } finally {
       refreshingRef.current = false;
@@ -113,9 +144,18 @@ export function useImpactData() {
     return list;
   }, [state.impactedCompanies, sortBy, filterSector, filterRegion]);
 
-  const minutesAgo = state.lastUpdated
-    ? Math.max(0, Math.floor((Date.now() - new Date(state.lastUpdated).getTime()) / 60000))
-    : null;
+  const timestampMs = state.lastUpdated ? new Date(state.lastUpdated).getTime() : null;
+  const elapsedMs = timestampMs ? Math.max(0, currentTime - timestampMs) : null;
+  const minutesAgo = elapsedMs !== null ? Math.floor(elapsedMs / 60000) : null;
+
+  const timeAgoLabel = useMemo(() => {
+    if (elapsedMs === null) return 'Never';
+    if (elapsedMs < 45_000) return 'just now';
+    const mins = Math.floor(elapsedMs / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h ago`;
+  }, [elapsedMs]);
 
   return {
     ...state,
@@ -131,6 +171,7 @@ export function useImpactData() {
     refresh,
     refreshing,
     minutesAgo,
+    timeAgoLabel,
     reload: load
   };
 }

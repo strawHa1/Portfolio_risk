@@ -13,7 +13,8 @@
     "lint": "tsc --noEmit",
     "snapshot": "tsx scripts/run-daily-snapshot.ts",
     "test:snapshot-job": "tsx scripts/test-snapshot-job.ts",
-    "test:alert-engine": "tsx scripts/test-alert-engine.ts"
+    "test:alert-engine": "tsx scripts/test-alert-engine.ts",
+    "test:impact": "tsx scripts/test-impact-comprehensive.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

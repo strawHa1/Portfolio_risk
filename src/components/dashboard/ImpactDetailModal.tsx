@@ -171,9 +171,8 @@ export const ImpactDetailModal: React.FC<ImpactDetailModalProps> = ({
               </div>
             </div>
             <div className="mt-4 pt-3 border-t border-[#232A3D] flex items-center justify-between text-[11px] font-mono text-slate-400">
-              <span>Session open ~ ${Number.isFinite(openPrice) ? openPrice.toFixed(2) : currentPrice.toFixed(2)}</span>
-              <span className={aligned ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
-                {aligned ? '✓ Move is inside predicted range' : 'Move is outside predicted range'}
+              <span className={aligned ? 'text-emerald-400 font-bold flex items-center gap-1' : 'text-amber-400 font-bold flex items-center gap-1'}>
+                {aligned ? '✓ Aligned (Move is inside predicted range)' : '⚠ Not aligned (Move is outside predicted range)'}
               </span>
             </div>
           </div>

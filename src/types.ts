@@ -115,8 +115,10 @@ export interface StockImpactRecord {
 export interface ImpactStoreState {
   impactedCompanies: StockImpactRecord[];
   lastUpdated: string | null;
+  lastPriceUpdated?: string | null;
   isLoading: boolean;
   error: string | null;
+  notice?: string | null;
   source: string;
 }
 

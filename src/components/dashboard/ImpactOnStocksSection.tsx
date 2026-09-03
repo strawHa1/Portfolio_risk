@@ -15,7 +15,7 @@ export const ImpactOnStocksSection: React.FC<ImpactOnStocksSectionProps> = ({ on
     isLoading,
     error,
     lastUpdated,
-    minutesAgo,
+    timeAgoLabel,
     sortBy,
     setSortBy,
     filterSector,
@@ -45,8 +45,9 @@ export const ImpactOnStocksSection: React.FC<ImpactOnStocksSectionProps> = ({ on
               Live news-to-price correlation across tracked companies
             </p>
             {lastUpdated && (
-              <p className="text-[10px] text-emerald-400 font-mono mt-1">
-                Updated {minutesAgo === 0 ? 'just now' : `${minutesAgo} min ago`}
+              <p className="text-[10px] text-emerald-400 font-mono mt-1 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Updated {timeAgoLabel}
                 {source && source !== 'none' && ` • via ${source}`}
               </p>
             )}
@@ -111,6 +112,19 @@ export const ImpactOnStocksSection: React.FC<ImpactOnStocksSectionProps> = ({ on
           </div>
         </div>
 
+        {/* Non-blocking error banner */}
+        {error && filteredImpacts.length > 0 && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs">
+            <div className="flex items-center gap-2 truncate">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="truncate">{error} (showing last successful data)</span>
+            </div>
+            <button onClick={refresh} className="underline text-amber-300 hover:text-white shrink-0 font-semibold">
+              Retry
+            </button>
+          </div>
+        )}
+
         {/* Content */}
         {isLoading && filteredImpacts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-slate-400">
@@ -131,7 +145,7 @@ export const ImpactOnStocksSection: React.FC<ImpactOnStocksSectionProps> = ({ on
             No impacts match current filters. Try adjusting sector or region.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[520px] overflow-y-auto custom-scrollbar pr-1">
+          <div className={`grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[520px] overflow-y-auto custom-scrollbar pr-1 transition-opacity ${refreshing ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
             {filteredImpacts.map((record) => (
               <ImpactCard key={record.id} record={record} onClick={() => setSelected(record)} />
             ))}
