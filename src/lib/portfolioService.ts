@@ -11,6 +11,7 @@
 
 import { PortfolioItem } from '../types';
 import { INITIAL_PORTFOLIO } from '../data/mockData';
+import { computeAllocationsLargestRemainder } from '../utils/portfolioMath';
 
 const HOLDINGS_KEY = 'bs-portfolio-holdings';
 const CASH_KEY = 'bs-portfolio-cash';
@@ -66,15 +67,15 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 /**
- * Allocation percentages are derived from cost-basis value, matching how the
- * Portfolio Risk page already computes position value.
+ * Allocation percentages are derived using Largest Remainder Method,
+ * ensuring they sum to exactly 100.0%.
  */
 function recalcAllocations(holdings: PortfolioItem[]): PortfolioItem[] {
-  const total = holdings.reduce((sum, h) => sum + h.shares * (h.avgCost || h.costBasis || 0), 0);
-  if (total <= 0) return holdings.map((h) => ({ ...h, allocationPct: 0 }));
-  return holdings.map((h) => ({
+  const values = holdings.map((h) => h.shares * (h.price ?? h.avgCost ?? h.costBasis ?? 0));
+  const rounded = computeAllocationsLargestRemainder(values, 1);
+  return holdings.map((h, idx) => ({
     ...h,
-    allocationPct: Number((((h.shares * (h.avgCost || h.costBasis || 0)) / total) * 100).toFixed(1))
+    allocationPct: rounded[idx] ?? 0
   }));
 }
 
@@ -86,9 +87,26 @@ function persist(holdings: PortfolioItem[], cash: number): void {
 
 export function getHoldings(): PortfolioItem[] {
   const stored = readJson<PortfolioItem[] | null>(HOLDINGS_KEY, null);
-  if (stored && Array.isArray(stored)) return stored;
+  if (stored && Array.isArray(stored) && stored.length > 0) {
+    const hydrated = stored.map((item) => {
+      const seed = INITIAL_PORTFOLIO.find((s) => s.ticker.toUpperCase() === item.ticker?.toUpperCase());
+      const price = item.price ?? item.avgCost ?? item.costBasis ?? seed?.price ?? 100;
+      const prevClose = item.prevClose ?? seed?.prevClose ?? price;
+      return {
+        ...item,
+        name: item.name || item.companyName || seed?.name || item.ticker,
+        companyName: item.companyName || item.name || seed?.companyName || item.ticker,
+        sector: item.sector || seed?.sector || 'General',
+        price,
+        prevClose,
+        shares: item.shares ?? seed?.shares ?? 0,
+        riskScore: item.riskScore ?? seed?.riskScore ?? 50
+      };
+    });
+    return recalcAllocations(hydrated);
+  }
   // First run: seed from the existing mock portfolio so nothing appears empty.
-  return INITIAL_PORTFOLIO.map((h) => ({ ...h }));
+  return recalcAllocations(INITIAL_PORTFOLIO.map((h) => ({ ...h })));
 }
 
 export function getCashBalance(): number {
@@ -161,7 +179,10 @@ export function executeTrade(request: TradeRequest): TradeResult {
           ticker,
           companyName,
           name: companyName,
+          sector: 'General',
           shares,
+          price: Number(price.toFixed(2)),
+          prevClose: Number(price.toFixed(2)),
           avgCost: Number(price.toFixed(2)),
           allocationPct: 0,
           riskScore: riskScore ?? 50,

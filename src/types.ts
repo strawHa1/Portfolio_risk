@@ -167,14 +167,17 @@ export interface CountryRisk {
 export interface PortfolioHolding {
   id: string;
   ticker: string;
-  name?: string;
-  companyName?: string;
+  name: string;
+  sector: string;
   shares: number;
+  price: number;
+  prevClose: number;
+  riskScore: number;
+  companyName?: string;
   costBasis?: number;
   avgCost?: number;
   currentValue?: number;
-  allocationPct: number;
-  riskScore: number;
+  allocationPct?: number;
   recommendedAction?: string;
   action?: string;
 }
